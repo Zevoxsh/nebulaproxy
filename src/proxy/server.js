@@ -8,10 +8,14 @@ import pool from '../database/pool.js';
 // Disable SSL certificate verification globally (for backend connections)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-// Create HTTPS agent that accepts self-signed certificates
-const httpsAgent = new https.Agent({
+// Create global HTTPS agent that accepts self-signed certificates
+const globalHttpsAgent = new https.Agent({
   rejectUnauthorized: false,
-  keepAlive: true
+  keepAlive: true,
+  maxSockets: 100,
+  maxFreeSockets: 10,
+  timeout: 60000,
+  freeSocketTimeout: 30000
 });
 
 const proxy = httpProxy.createProxyServer({
@@ -153,25 +157,16 @@ async function handleRequest(req, res) {
       path: req.url,
       method: req.method,
       headers: {
-        ...req.headers,
-        // Keep original Host header for Plesk to know which site to serve
-        // Remove 'host' override - keep client's original hostname
+        ...req.headers
       },
-      timeout: 60000, // Increased to 60 seconds
-      servername: hostname // SNI for SSL
+      timeout: 60000,
+      rejectUnauthorized: false,
+      requestCert: false,
+      agent: false // No agent pooling
     };
 
     console.log(`📤 Request headers:`, requestOptions.headers);
-    console.log(`🎯 Target: ${requestOptions.hostname}:${requestOptions.port} | SNI: ${requestOptions.servername}`);
-
-    // Add HTTPS agent that ignores SSL verification
-    if (isHttps) {
-      requestOptions.agent = new https.Agent({
-        rejectUnauthorized: false,
-        keepAlive: true,
-        maxSockets: 50
-      });
-    }
+    console.log(`🎯 Target: ${requestOptions.hostname}:${requestOptions.port}`);
 
     const proxyRequest = (isHttps ? https : http).request(requestOptions, (proxyRes) => {
       console.log(`📡 Backend responded: ${proxyRes.statusCode}`);
