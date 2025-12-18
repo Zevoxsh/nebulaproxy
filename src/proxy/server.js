@@ -162,7 +162,8 @@ async function handleRequest(req, res) {
       timeout: 60000,
       rejectUnauthorized: false,
       requestCert: false,
-      agent: false // No agent pooling
+      agent: false, // No agent pooling
+      servername: hostname // Add SNI support for HTTPS backend connections
     };
 
     console.log(`📤 Request headers:`, requestOptions.headers);
