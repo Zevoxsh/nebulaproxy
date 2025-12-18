@@ -154,6 +154,9 @@ async function handleRequest(req, res) {
     const isHttps = target.startsWith('https://');
     const targetUrl = new URL(target);
 
+    // Check if hostname is an IP address (for SNI compatibility)
+    const isIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(targetUrl.hostname);
+
     const requestOptions = {
       hostname: targetUrl.hostname,
       port: targetUrl.port || (isHttps ? 443 : 80),
@@ -165,9 +168,13 @@ async function handleRequest(req, res) {
       timeout: 30000,
       rejectUnauthorized: false,
       requestCert: false,
-      agent: isHttps ? globalHttpsAgent : globalHttpAgent, // Use connection pooling
-      servername: targetUrl.hostname // Use backend hostname for SNI, not client hostname
+      agent: isHttps ? globalHttpsAgent : globalHttpAgent // Use connection pooling
     };
+
+    // Only set servername for HTTPS if hostname is not an IP (RFC 6066 compliance)
+    if (isHttps && !isIpAddress) {
+      requestOptions.servername = targetUrl.hostname;
+    }
 
     const proxyRequest = (isHttps ? https : http).request(requestOptions, (proxyRes) => {
       // Copy status and headers
