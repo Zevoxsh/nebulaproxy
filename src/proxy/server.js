@@ -156,10 +156,20 @@ async function handleRequest(req, res) {
         ...req.headers,
         host: targetUrl.hostname
       },
-      rejectUnauthorized: false // IGNORE SSL VERIFICATION
+      timeout: 30000
     };
 
+    // Add HTTPS agent that ignores SSL verification
+    if (isHttps) {
+      requestOptions.agent = new https.Agent({
+        rejectUnauthorized: false,
+        keepAlive: true
+      });
+    }
+
     const proxyRequest = (isHttps ? https : http).request(requestOptions, (proxyRes) => {
+      console.log(`📡 Backend responded: ${proxyRes.statusCode}`);
+
       // Copy status and headers
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
 
@@ -173,11 +183,24 @@ async function handleRequest(req, res) {
 
     proxyRequest.on('error', (err) => {
       console.error(`❌ Proxy error for ${hostname}:`, err.message);
+      console.error(`Error code: ${err.code}`);
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           error: 'Bad Gateway',
           message: err.message
+        }));
+      }
+    });
+
+    proxyRequest.on('timeout', () => {
+      console.error(`⏱️  Timeout connecting to ${target}`);
+      proxyRequest.destroy();
+      if (!res.headersSent) {
+        res.writeHead(504, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Gateway Timeout',
+          message: 'Backend server did not respond in time'
         }));
       }
     });
