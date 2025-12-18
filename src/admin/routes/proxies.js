@@ -71,7 +71,7 @@ router.post('/',
   authMiddleware,
   body('domain').notEmpty().trim(),
   body('backend_url').notEmpty().trim(),
-  body('backend_port').isInt({ min: 1, max: 65535 }),
+  body('backend_port').optional().isInt({ min: 1, max: 65535 }),
   body('proxy_type').optional().isIn(['http', 'https', 'tcp']),
   body('ssl_enabled').optional().isBoolean(),
   async (req, res) => {
@@ -84,7 +84,7 @@ router.post('/',
         });
       }
 
-      const {
+      let {
         domain,
         backend_url,
         backend_port,
@@ -92,6 +92,26 @@ router.post('/',
         description = '',
         ssl_enabled = false
       } = req.body;
+
+      // Auto-detect port from backend_url if not provided
+      if (!backend_port && backend_url) {
+        try {
+          if (backend_url.startsWith('http://') || backend_url.startsWith('https://')) {
+            const urlObj = new URL(backend_url);
+            if (urlObj.port) {
+              backend_port = parseInt(urlObj.port);
+            } else {
+              backend_port = urlObj.protocol === 'https:' ? 443 : 80;
+            }
+          }
+        } catch (e) {
+          // If parsing fails, backend_port is required
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid backend URL or missing port'
+          });
+        }
+      }
 
       // Check if domain already exists
       const existing = await pool.query(

@@ -221,13 +221,15 @@
                 <div class="form-group">
                     <label for="backend_url">Backend URL</label>
                     <input type="text" id="backend_url" name="backend_url" required
-                           placeholder="192.168.1.100 or backend.local">
+                           placeholder="https://10.10.0.7 or http://192.168.1.100:8080">
+                    <small>Specify protocol (http:// or https://). Port is optional if included in URL.</small>
                 </div>
 
                 <div class="form-group">
                     <label for="backend_port">Backend Port</label>
-                    <input type="number" id="backend_port" name="backend_port" required
-                           placeholder="8080" min="1" max="65535">
+                    <input type="number" id="backend_port" name="backend_port"
+                           placeholder="443 (optional if specified in URL)" min="1" max="65535">
+                    <small>Leave empty if port is already in Backend URL</small>
                 </div>
 
                 <div class="form-group">

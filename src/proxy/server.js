@@ -96,8 +96,22 @@ async function handleRequest(req, res) {
   }
 
   // Build target URL
-  const protocol = proxyConfig.proxyType === 'https' ? 'https' : 'http';
-  const target = `${protocol}://${proxyConfig.backendUrl}:${proxyConfig.backendPort}`;
+  let target;
+
+  // Check if backend_url already has protocol
+  if (proxyConfig.backendUrl.startsWith('http://') || proxyConfig.backendUrl.startsWith('https://')) {
+    // Use backend_url as-is, append port if not in URL
+    const backendUrl = new URL(proxyConfig.backendUrl);
+    if (!backendUrl.port && proxyConfig.backendPort) {
+      target = `${backendUrl.protocol}//${backendUrl.hostname}:${proxyConfig.backendPort}${backendUrl.pathname}`;
+    } else {
+      target = proxyConfig.backendUrl;
+    }
+  } else {
+    // Fallback to old behavior for backward compatibility
+    const protocol = proxyConfig.proxyType === 'https' ? 'https' : 'http';
+    target = `${protocol}://${proxyConfig.backendUrl}:${proxyConfig.backendPort}`;
+  }
 
   try {
     proxy.web(req, res, {

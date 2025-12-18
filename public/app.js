@@ -342,10 +342,34 @@ async function handleProxySubmit(e) {
     e.preventDefault();
 
     const formData = new FormData(e.target);
+    const backendUrl = formData.get('backend_url');
+    const backendPort = formData.get('backend_port');
+
+    // Parse port from URL if not explicitly provided
+    let finalPort = backendPort ? parseInt(backendPort) : null;
+
+    if (!finalPort && backendUrl) {
+        try {
+            const urlObj = new URL(backendUrl);
+            if (urlObj.port) {
+                finalPort = parseInt(urlObj.port);
+            } else {
+                // Use default ports if not specified
+                finalPort = urlObj.protocol === 'https:' ? 443 : 80;
+            }
+        } catch (e) {
+            // If URL parsing fails, require explicit port
+            if (!backendPort) {
+                alert('Please specify a port or include it in the Backend URL');
+                return;
+            }
+        }
+    }
+
     const data = {
         domain: formData.get('domain'),
-        backend_url: formData.get('backend_url'),
-        backend_port: parseInt(formData.get('backend_port')),
+        backend_url: backendUrl,
+        backend_port: finalPort,
         proxy_type: formData.get('proxy_type'),
         description: formData.get('description'),
         ssl_enabled: formData.get('ssl_enabled') === 'on'
