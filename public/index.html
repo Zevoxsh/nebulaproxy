@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula Proxy - Enterprise Reverse Proxy Manager</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="loginPage" class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>🌌 Nebula Proxy</h1>
+                <p>Enterprise Reverse Proxy Management</p>
+            </div>
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required placeholder="admin@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required placeholder="Enter your password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">
+                    Sign In
+                </button>
+                <div id="loginError" class="error-message" style="display: none;"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display: none;">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>🌌 Nebula</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" data-page="overview" class="nav-item active">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Overview</span>
+                </a>
+                <a href="#" data-page="proxies" class="nav-item">
+                    <span class="nav-icon">🌐</span>
+                    <span class="nav-label">Proxies</span>
+                </a>
+                <a href="#" data-page="ssl" class="nav-item">
+                    <span class="nav-icon">🔐</span>
+                    <span class="nav-label">SSL Certificates</span>
+                </a>
+                <a href="#" data-page="logs" class="nav-item">
+                    <span class="nav-icon">📝</span>
+                    <span class="nav-label">Logs</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span class="user-email" id="userEmail"></span>
+                </div>
+                <button id="logoutBtn" class="btn btn-secondary btn-sm">Logout</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Overview Page -->
+            <div id="overviewPage" class="page active">
+                <div class="page-header">
+                    <h1>Dashboard Overview</h1>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🌐</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Total Proxies</div>
+                            <div class="stat-value" id="totalProxies">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Active Proxies</div>
+                            <div class="stat-value" id="activeProxies">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📈</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Requests (24h)</div>
+                            <div class="stat-value" id="totalRequests">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⚡</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Avg Response Time</div>
+                            <div class="stat-value" id="avgResponseTime">0ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Proxies Page -->
+            <div id="proxiesPage" class="page">
+                <div class="page-header">
+                    <h1>Proxy Management</h1>
+                    <button id="addProxyBtn" class="btn btn-primary">
+                        ➕ Add Domain
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Backend</th>
+                                <th>Type</th>
+                                <th>SSL</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="proxiesTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SSL Certificates Page -->
+            <div id="sslPage" class="page">
+                <div class="page-header">
+                    <h1>SSL Certificates</h1>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Issued</th>
+                                <th>Expires</th>
+                                <th>Auto Renew</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sslTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Logs Page -->
+            <div id="logsPage" class="page">
+                <div class="page-header">
+                    <h1>Proxy Logs</h1>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Domain</th>
+                                <th>Method</th>
+                                <th>Path</th>
+                                <th>Status</th>
+                                <th>Response Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Proxy Modal -->
+    <div id="proxyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add Domain</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <form id="proxyForm">
+                <div class="form-group">
+                    <label>Proxy Type</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="proxy_type" value="http" checked>
+                            <span class="radio-custom">🌐 HTTP/HTTPS Proxy</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="proxy_type" value="tcp">
+                            <span class="radio-custom">🔌 TCP Proxy <span class="badge">Premium</span></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="domain">Domain Name</label>
+                    <input type="text" id="domain" name="domain" required
+                           placeholder="example.com or *.example.com">
+                    <small>Supports wildcard domains (e.g., *.plumsy.dev will match all subdomains)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="backend_url">Backend URL</label>
+                    <input type="text" id="backend_url" name="backend_url" required
+                           placeholder="192.168.1.100 or backend.local">
+                </div>
+
+                <div class="form-group">
+                    <label for="backend_port">Backend Port</label>
+                    <input type="number" id="backend_port" name="backend_port" required
+                           placeholder="8080" min="1" max="65535">
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" rows="3"
+                              placeholder="Optional description..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="ssl_enabled" name="ssl_enabled">
+                        <span class="checkbox-custom"></span>
+                        <span>Enable SSL/TLS for this domain</span>
+                    </label>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="cancelModal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Domain</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
