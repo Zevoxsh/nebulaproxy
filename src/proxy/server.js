@@ -157,20 +157,25 @@ async function handleRequest(req, res) {
         // Keep original Host header for Plesk to know which site to serve
         // Remove 'host' override - keep client's original hostname
       },
-      timeout: 30000,
+      timeout: 60000, // Increased to 60 seconds
       servername: hostname // SNI for SSL
     };
+
+    console.log(`📤 Request headers:`, requestOptions.headers);
+    console.log(`🎯 Target: ${requestOptions.hostname}:${requestOptions.port} | SNI: ${requestOptions.servername}`);
 
     // Add HTTPS agent that ignores SSL verification
     if (isHttps) {
       requestOptions.agent = new https.Agent({
         rejectUnauthorized: false,
-        keepAlive: true
+        keepAlive: true,
+        maxSockets: 50
       });
     }
 
     const proxyRequest = (isHttps ? https : http).request(requestOptions, (proxyRes) => {
       console.log(`📡 Backend responded: ${proxyRes.statusCode}`);
+      console.log(`📥 Response headers:`, proxyRes.headers);
 
       // Copy status and headers
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
@@ -181,6 +186,10 @@ async function handleRequest(req, res) {
       // Log success
       const responseTime = Date.now() - req._startTime;
       console.log(`✅ ${hostname} → ${proxyRes.statusCode} (${responseTime}ms)`);
+    });
+
+    proxyRequest.on('socket', (socket) => {
+      console.log(`🔌 Socket connected to ${requestOptions.hostname}:${requestOptions.port}`);
     });
 
     proxyRequest.on('error', (err) => {
