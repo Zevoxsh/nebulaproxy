@@ -154,9 +154,11 @@ async function handleRequest(req, res) {
       method: req.method,
       headers: {
         ...req.headers,
-        host: targetUrl.hostname
+        // Keep original Host header for Plesk to know which site to serve
+        // Remove 'host' override - keep client's original hostname
       },
-      timeout: 30000
+      timeout: 30000,
+      servername: hostname // SNI for SSL
     };
 
     // Add HTTPS agent that ignores SSL verification
