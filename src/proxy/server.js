@@ -99,6 +99,17 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Detect proxy loop
+  if (req.headers['x-nebula-proxy']) {
+    console.error('🔁 Proxy loop detected! Backend is redirecting back to proxy.');
+    res.writeHead(508, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'Loop Detected',
+      message: 'Backend server is redirecting back to the proxy. Check your backend configuration.'
+    }));
+    return;
+  }
+
   console.log(`📥 Request: ${req.method} ${hostname}${req.url}`);
   const proxyConfig = findProxyConfig(hostname);
 
@@ -130,25 +141,49 @@ async function handleRequest(req, res) {
   }
 
   try {
-    const proxyOptions = {
-      target,
-      secure: false,
-      changeOrigin: true,
-      ws: false
+    console.log(`🔀 Proxying ${hostname} → ${target}`);
+
+    // Create custom HTTPS agent that ignores SSL
+    const isHttps = target.startsWith('https://');
+    const targetUrl = new URL(target);
+
+    const requestOptions = {
+      hostname: targetUrl.hostname,
+      port: targetUrl.port || (isHttps ? 443 : 80),
+      path: req.url,
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: targetUrl.hostname
+      },
+      rejectUnauthorized: false // IGNORE SSL VERIFICATION
     };
 
-    // Add HTTPS agent if backend uses HTTPS
-    if (target.startsWith('https://')) {
-      proxyOptions.agent = new https.Agent({
-        rejectUnauthorized: false,
-        secureProtocol: 'TLS_method'
-      });
-      console.log(`🔀 Proxying ${hostname} → ${target} (HTTPS with insecure agent)`);
-    } else {
-      console.log(`🔀 Proxying ${hostname} → ${target}`);
-    }
+    const proxyRequest = (isHttps ? https : http).request(requestOptions, (proxyRes) => {
+      // Copy status and headers
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
 
-    proxy.web(req, res, proxyOptions);
+      // Pipe response back
+      proxyRes.pipe(res);
+
+      // Log success
+      const responseTime = Date.now() - req._startTime;
+      console.log(`✅ ${hostname} → ${proxyRes.statusCode} (${responseTime}ms)`);
+    });
+
+    proxyRequest.on('error', (err) => {
+      console.error(`❌ Proxy error for ${hostname}:`, err.message);
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Bad Gateway',
+          message: err.message
+        }));
+      }
+    });
+
+    // Pipe request body
+    req.pipe(proxyRequest);
   } catch (error) {
     console.error('Proxy request error:', error);
     res.writeHead(500, { 'Content-Type': 'application/json' });
