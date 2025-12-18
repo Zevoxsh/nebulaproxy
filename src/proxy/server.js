@@ -5,9 +5,14 @@ import { findProxyConfig } from './loader.js';
 import { getCertificate } from '../ssl/manager.js';
 import pool from '../database/pool.js';
 
+// Create HTTPS agent that accepts self-signed certificates
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false
+});
+
 const proxy = httpProxy.createProxyServer({
   xfwd: true,
-  secure: false,
+  secure: false, // Don't verify SSL certificates
   changeOrigin: true
 });
 
@@ -114,11 +119,19 @@ async function handleRequest(req, res) {
   }
 
   try {
-    proxy.web(req, res, {
+    const proxyOptions = {
       target,
       secure: false,
       changeOrigin: true
-    });
+    };
+
+    // Add HTTPS agent if backend uses HTTPS
+    if (target.startsWith('https://')) {
+      proxyOptions.agent = httpsAgent;
+    }
+
+    console.log(`🔀 Proxying ${hostname} → ${target}`);
+    proxy.web(req, res, proxyOptions);
   } catch (error) {
     console.error('Proxy request error:', error);
     res.writeHead(500, { 'Content-Type': 'application/json' });
