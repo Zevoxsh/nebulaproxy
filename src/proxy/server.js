@@ -12,10 +12,23 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const globalHttpsAgent = new https.Agent({
   rejectUnauthorized: false,
   keepAlive: true,
-  maxSockets: 100,
-  maxFreeSockets: 10,
-  timeout: 60000,
-  freeSocketTimeout: 30000
+  keepAliveMsecs: 1000,
+  maxSockets: 200,
+  maxFreeSockets: 20,
+  timeout: 30000,
+  freeSocketTimeout: 15000,
+  scheduling: 'fifo'
+});
+
+// Create global HTTP agent for connection pooling
+const globalHttpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 1000,
+  maxSockets: 200,
+  maxFreeSockets: 20,
+  timeout: 30000,
+  freeSocketTimeout: 15000,
+  scheduling: 'fifo'
 });
 
 const proxy = httpProxy.createProxyServer({
@@ -28,30 +41,26 @@ const proxy = httpProxy.createProxyServer({
 
 // Error handling
 proxy.on('error', async (err, req, res) => {
-  console.error('❌ Proxy error:', err.message);
-  console.error('Error code:', err.code);
-  console.error('Error stack:', err.stack);
+  if (process.env.NODE_ENV === 'development') {
+    console.error('❌ Proxy error:', err.message, 'Code:', err.code);
+  }
 
-  try {
-    // Log error
-    const proxyConfig = findProxyConfig(req.headers.host);
-    if (proxyConfig) {
-      await pool.query(`
-        INSERT INTO proxy_logs (
-          proxy_id, request_method, request_path,
-          client_ip, status_code, error_message
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-      `, [
-        proxyConfig.id,
-        req.method,
-        req.url,
-        req.socket.remoteAddress,
-        502,
-        `${err.code || 'ERROR'}: ${err.message}`
-      ]);
-    }
-  } catch (logError) {
-    console.error('Failed to log error:', logError);
+  // Log error asynchronously (fire and forget)
+  const proxyConfig = findProxyConfig(req.headers.host);
+  if (proxyConfig) {
+    pool.query(`
+      INSERT INTO proxy_logs (
+        proxy_id, request_method, request_path,
+        client_ip, status_code, error_message
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      proxyConfig.id,
+      req.method,
+      req.url,
+      req.socket.remoteAddress,
+      502,
+      `${err.code || 'ERROR'}: ${err.message}`
+    ]).catch(() => {}); // Ignore logging errors
   }
 
   if (!res.headersSent) {
@@ -65,29 +74,26 @@ proxy.on('error', async (err, req, res) => {
 });
 
 // Proxy success logging
-proxy.on('proxyRes', async (proxyRes, req, res) => {
+proxy.on('proxyRes', (proxyRes, req, res) => {
   const startTime = req._startTime || Date.now();
   const responseTime = Date.now() - startTime;
 
-  try {
-    const proxyConfig = findProxyConfig(req.headers.host);
-    if (proxyConfig) {
-      await pool.query(`
-        INSERT INTO proxy_logs (
-          proxy_id, request_method, request_path,
-          client_ip, status_code, response_time
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-      `, [
-        proxyConfig.id,
-        req.method,
-        req.url,
-        req.socket.remoteAddress,
-        proxyRes.statusCode,
-        responseTime
-      ]);
-    }
-  } catch (logError) {
-    console.error('Failed to log request:', logError);
+  // Log success asynchronously (fire and forget)
+  const proxyConfig = findProxyConfig(req.headers.host);
+  if (proxyConfig) {
+    pool.query(`
+      INSERT INTO proxy_logs (
+        proxy_id, request_method, request_path,
+        client_ip, status_code, response_time
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      proxyConfig.id,
+      req.method,
+      req.url,
+      req.socket.remoteAddress,
+      proxyRes.statusCode,
+      responseTime
+    ]).catch(() => {}); // Ignore logging errors
   }
 });
 
@@ -114,7 +120,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  console.log(`📥 Request: ${req.method} ${hostname}${req.url}`);
   const proxyConfig = findProxyConfig(hostname);
 
   if (!proxyConfig) {
@@ -145,8 +150,6 @@ async function handleRequest(req, res) {
   }
 
   try {
-    console.log(`🔀 Proxying ${hostname} → ${target}`);
-
     // Create custom HTTPS agent that ignores SSL
     const isHttps = target.startsWith('https://');
     const targetUrl = new URL(target);
@@ -159,38 +162,31 @@ async function handleRequest(req, res) {
       headers: {
         ...req.headers
       },
-      timeout: 60000,
+      timeout: 30000,
       rejectUnauthorized: false,
       requestCert: false,
-      agent: false, // No agent pooling
-      servername: hostname // Add SNI support for HTTPS backend connections
+      agent: isHttps ? globalHttpsAgent : globalHttpAgent, // Use connection pooling
+      servername: targetUrl.hostname // Use backend hostname for SNI, not client hostname
     };
 
-    console.log(`📤 Request headers:`, requestOptions.headers);
-    console.log(`🎯 Target: ${requestOptions.hostname}:${requestOptions.port}`);
-
     const proxyRequest = (isHttps ? https : http).request(requestOptions, (proxyRes) => {
-      console.log(`📡 Backend responded: ${proxyRes.statusCode}`);
-      console.log(`📥 Response headers:`, proxyRes.headers);
-
       // Copy status and headers
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
 
       // Pipe response back
       proxyRes.pipe(res);
 
-      // Log success
-      const responseTime = Date.now() - req._startTime;
-      console.log(`✅ ${hostname} → ${proxyRes.statusCode} (${responseTime}ms)`);
-    });
-
-    proxyRequest.on('socket', (socket) => {
-      console.log(`🔌 Socket connected to ${requestOptions.hostname}:${requestOptions.port}`);
+      // Log success in dev mode
+      if (process.env.NODE_ENV === 'development') {
+        const responseTime = Date.now() - req._startTime;
+        console.log(`✅ ${hostname} → ${proxyRes.statusCode} (${responseTime}ms)`);
+      }
     });
 
     proxyRequest.on('error', (err) => {
-      console.error(`❌ Proxy error for ${hostname}:`, err.message);
-      console.error(`Error code: ${err.code}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`❌ ${hostname}: ${err.message}`);
+      }
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -253,17 +249,19 @@ export async function startProxyServer() {
   const httpsServer = https.createServer({
     SNICallback: async (domain, callback) => {
       try {
-        console.log(`🔐 SNI request for domain: ${domain}`);
         const cert = await getCertificate(domain);
         if (cert) {
           callback(null, cert.context);
         } else {
-          console.warn(`⚠️  No certificate found for domain: ${domain}`);
-          // Use a default self-signed cert or reject
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`⚠️  No certificate found for domain: ${domain}`);
+          }
           callback(new Error('No certificate found for domain'));
         }
       } catch (error) {
-        console.error('❌ SNI callback error:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('❌ SNI callback error:', error);
+        }
         callback(error);
       }
     }
