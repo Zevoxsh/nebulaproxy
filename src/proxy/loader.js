@@ -94,6 +94,12 @@ export async function removeProxy(domain) {
 }
 
 export function findProxyConfig(hostname) {
+  // Handle undefined or null hostname
+  if (!hostname) {
+    console.warn('⚠️  findProxyConfig called with undefined hostname');
+    return null;
+  }
+
   // Direct match
   if (activeProxies.has(hostname)) {
     return activeProxies.get(hostname);

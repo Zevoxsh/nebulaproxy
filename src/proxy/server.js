@@ -93,11 +93,13 @@ async function handleRequest(req, res) {
   const hostname = req.headers.host?.split(':')[0];
 
   if (!hostname) {
+    console.error('❌ Request without valid hostname:', req.headers);
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Bad Request', message: 'Invalid hostname' }));
     return;
   }
 
+  console.log(`📥 Request: ${req.method} ${hostname}${req.url}`);
   const proxyConfig = findProxyConfig(hostname);
 
   if (!proxyConfig) {
@@ -186,18 +188,30 @@ export async function startProxyServer() {
   const httpsServer = https.createServer({
     SNICallback: async (domain, callback) => {
       try {
+        console.log(`🔐 SNI request for domain: ${domain}`);
         const cert = await getCertificate(domain);
         if (cert) {
           callback(null, cert.context);
         } else {
+          console.warn(`⚠️  No certificate found for domain: ${domain}`);
+          // Use a default self-signed cert or reject
           callback(new Error('No certificate found for domain'));
         }
       } catch (error) {
-        console.error('SNI callback error:', error);
+        console.error('❌ SNI callback error:', error);
         callback(error);
       }
     }
-  }, handleRequest);
+  }, async (req, res) => {
+    // Ensure we have the hostname
+    if (!req.headers.host) {
+      console.error('❌ HTTPS request without Host header');
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Bad Request', message: 'Host header required' }));
+      return;
+    }
+    await handleRequest(req, res);
+  });
 
   httpsServer.on('error', (err) => {
     if (err.code === 'EACCES') {
