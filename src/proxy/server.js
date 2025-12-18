@@ -5,20 +5,28 @@ import { findProxyConfig } from './loader.js';
 import { getCertificate } from '../ssl/manager.js';
 import pool from '../database/pool.js';
 
+// Disable SSL certificate verification globally (for backend connections)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 // Create HTTPS agent that accepts self-signed certificates
 const httpsAgent = new https.Agent({
-  rejectUnauthorized: false
+  rejectUnauthorized: false,
+  keepAlive: true
 });
 
 const proxy = httpProxy.createProxyServer({
   xfwd: true,
   secure: false, // Don't verify SSL certificates
-  changeOrigin: true
+  changeOrigin: true,
+  timeout: 30000, // 30 seconds timeout
+  proxyTimeout: 30000
 });
 
 // Error handling
 proxy.on('error', async (err, req, res) => {
-  console.error('Proxy error:', err.message);
+  console.error('❌ Proxy error:', err.message);
+  console.error('Error code:', err.code);
+  console.error('Error stack:', err.stack);
 
   try {
     // Log error
@@ -35,7 +43,7 @@ proxy.on('error', async (err, req, res) => {
         req.url,
         req.socket.remoteAddress,
         502,
-        err.message
+        `${err.code || 'ERROR'}: ${err.message}`
       ]);
     }
   } catch (logError) {
@@ -46,7 +54,8 @@ proxy.on('error', async (err, req, res) => {
     res.writeHead(502, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       error: 'Bad Gateway',
-      message: 'Failed to connect to backend server'
+      message: 'Failed to connect to backend server',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
     }));
   }
 });
@@ -122,15 +131,21 @@ async function handleRequest(req, res) {
     const proxyOptions = {
       target,
       secure: false,
-      changeOrigin: true
+      changeOrigin: true,
+      ws: false
     };
 
     // Add HTTPS agent if backend uses HTTPS
     if (target.startsWith('https://')) {
-      proxyOptions.agent = httpsAgent;
+      proxyOptions.agent = new https.Agent({
+        rejectUnauthorized: false,
+        secureProtocol: 'TLS_method'
+      });
+      console.log(`🔀 Proxying ${hostname} → ${target} (HTTPS with insecure agent)`);
+    } else {
+      console.log(`🔀 Proxying ${hostname} → ${target}`);
     }
 
-    console.log(`🔀 Proxying ${hostname} → ${target}`);
     proxy.web(req, res, proxyOptions);
   } catch (error) {
     console.error('Proxy request error:', error);
