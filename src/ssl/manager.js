@@ -67,14 +67,22 @@ export async function getCertificate(domain) {
     const proxyConfig = findProxyConfig(domain);
     if (proxyConfig && proxyConfig.sslEnabled) {
       console.log(`🔐 Attempting to request SSL certificate for ${domain}...`);
-      await requestCertificate(domain);
-      return await getCertificate(domain);
+      try {
+        const newCert = await requestCertificate(domain);
+        if (newCert) {
+          console.log(`✅ Certificate generated and loaded for ${domain}`);
+          return newCert;
+        }
+      } catch (certError) {
+        console.error(`Failed to generate certificate for ${domain}:`, certError);
+      }
     }
 
   } catch (error) {
     console.error(`Failed to load certificate for ${domain}:`, error);
   }
 
+  console.warn(`⚠️  No certificate available for ${domain}`);
   return null;
 }
 
@@ -152,6 +160,7 @@ async function generateSelfSignedCertificate(domain) {
   const keyPath = path.join(CERT_DIR, `${domain}.key`);
 
   try {
+    console.log(`🔧 Generating self-signed certificate for ${domain} using OpenSSL...`);
     // Generate self-signed certificate using openssl
     execSync(`openssl req -x509 -newkey rsa:4096 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=${domain}"`, {
       stdio: 'pipe'
@@ -160,27 +169,16 @@ async function generateSelfSignedCertificate(domain) {
     const cert = await fs.readFile(certPath, 'utf8');
     const key = await fs.readFile(keyPath, 'utf8');
 
+    console.log(`✅ OpenSSL certificate generated successfully for ${domain}`);
     return { cert, key, ca: null };
 
   } catch (error) {
     // If OpenSSL is not available, return a dummy certificate
-    console.warn('⚠️  OpenSSL not found. Using dummy certificate for development.');
+    console.error('❌ OpenSSL error:', error.message);
+    console.warn('⚠️  OpenSSL not available. This will cause SSL connections to fail.');
+    console.warn('⚠️  Please install OpenSSL or use the admin panel to upload a valid certificate.');
 
-    return {
-      cert: `-----BEGIN CERTIFICATE-----
-MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKKzMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
-BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
-aWRnaXRzIFB0eSBMdGQwHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAxMDAwMDAwWjBF
-MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50
-ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
-CgKCAQEA0Z1q3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq3Xq
------END CERTIFICATE-----`,
-      key: `-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDRnWrderderder
-derderderderderderderderderderderderderderderderderderderderderde
------END PRIVATE KEY-----`,
-      ca: null
-    };
+    throw new Error('OpenSSL not available and no valid certificate could be generated');
   }
 }
 
